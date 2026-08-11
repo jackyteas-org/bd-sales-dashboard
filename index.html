@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 BD 銷售月報儀表板 — 更新至 5/20</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ===== SETUP MODAL ===== */
+#setupModal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:none;align-items:center;justify-content:center;}
+#setupModal.open{display:flex;}
+.setup-box{background:#1a1d27;border:1px solid #2d3250;border-radius:18px;padding:36px 40px;width:480px;max-width:95vw;}
+.setup-box h3{font-size:18px;font-weight:700;color:#e2e8f0;margin-bottom:6px;}
+.setup-box .sdesc{font-size:12px;color:#94a3b8;margin-bottom:20px;line-height:1.6;}
+.setup-step{background:#0f1117;border-radius:8px;padding:14px 16px;margin-bottom:12px;border-left:3px solid #4f8ef7;}
+.setup-step .snum{font-size:11px;font-weight:700;color:#4f8ef7;margin-bottom:4px;}
+.setup-step code{font-size:12px;color:#fbbf24;background:#1a1d27;padding:2px 6px;border-radius:4px;word-break:break-all;}
+</style>
+<style>
+/* ===== AUTH STYLES ===== */
+#authOverlay{position:fixed;inset:0;background:#0f1117;z-index:9999;display:flex;align-items:center;justify-content:center;}
+#authOverlay.hidden{display:none;}
+.auth-box{background:#1a1d27;border:1px solid #2d3250;border-radius:18px;padding:40px 44px;width:420px;max-width:95vw;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+.auth-logo{text-align:center;margin-bottom:28px;}
+.auth-logo h2{font-size:20px;font-weight:700;color:#e2e8f0;margin-top:8px;}
+.auth-logo p{font-size:12px;color:#94a3b8;margin-top:4px;}
+.auth-tabs{display:flex;border-bottom:1px solid #2d3250;margin-bottom:24px;}
+.auth-tab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;color:#94a3b8;border-bottom:2px solid transparent;transition:all .2s;}
+.auth-tab.active{color:#4f8ef7;border-bottom-color:#4f8ef7;}
+.auth-panel{display:none;}.auth-panel.active{display:block;}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;}
+.form-group input{width:100%;background:#0f1117;border:1px solid #2d3250;border-radius:8px;padding:11px 14px;color:#e2e8f0;font-size:14px;outline:none;transition:border .2s;}
+.form-group input:focus{border-color:#4f8ef7;}
+.auth-btn{width:100%;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:none;margin-top:4px;transition:all .2s;}
+.auth-btn.primary{background:linear-gradient(135deg,#4f8ef7,#7c6ff7);color:#fff;}
+.auth-btn.primary:hover{opacity:.9;transform:translateY(-1px);}
+.auth-msg{font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:14px;display:none;}
+.auth-msg.error{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);display:block;}
+.auth-msg.success{background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3);display:block;}
+.auth-msg.info{background:rgba(79,142,247,.15);color:#4f8ef7;border:1px solid rgba(79,142,247,.3);display:block;}
+
+/* Admin panel overlay */
+#adminPanel{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:8888;display:none;align-items:center;justify-content:center;}
+#adminPanel.open{display:flex;}
+.admin-box{background:#1a1d27;border:1px solid #2d3250;border-radius:18px;width:700px;max-width:95vw;max-height:85vh;overflow-y:auto;padding:32px;}
+.admin-box h3{font-size:18px;font-weight:700;color:#e2e8f0;margin-bottom:4px;}
+.admin-box .sub{font-size:12px;color:#94a3b8;margin-bottom:24px;}
+.admin-section{margin-bottom:28px;}
+.admin-section h4{font-size:13px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #2d3250;}
+.user-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#0f1117;border-radius:8px;margin-bottom:8px;}
+.user-row .uname{flex:1;font-size:13px;font-weight:600;color:#e2e8f0;}
+.user-row .urole{font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(79,142,247,.15);color:#4f8ef7;}
+.user-row .ustatus{font-size:11px;padding:2px 8px;border-radius:4px;}
+.ustatus.approved{background:rgba(52,211,153,.15);color:#34d399;}
+.ustatus.pending{background:rgba(251,191,36,.15);color:#fbbf24;}
+.ustatus.disabled{background:rgba(248,113,113,.15);color:#f87171;}
+.action-btn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+.btn-approve{background:rgba(52,211,153,.2);color:#34d399;}
+.btn-approve:hover{background:rgba(52,211,153,.4);}
+.btn-disable{background:rgba(248,113,113,.2);color:#f87171;}
+.btn-disable:hover{background:rgba(248,113,113,.4);}
+.btn-enable{background:rgba(79,142,247,.2);color:#4f8ef7;}
+.btn-enable:hover{background:rgba(79,142,247,.4);}
+.btn-delete{background:rgba(100,100,100,.2);color:#94a3b8;}
+.btn-delete:hover{background:rgba(248,113,113,.2);color:#f87171;}
+.btn-close{background:#222638;color:#94a3b8;padding:8px 20px;border-radius:8px;font-size:13px;}
+.btn-close:hover{color:#e2e8f0;}
+.empty-msg{font-size:13px;color:#475569;text-align:center;padding:20px;}
+
+/* Header user info */
+.user-info{display:flex;align-items:center;gap:10px;}
+.user-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c6ff7);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;}
+.user-name{font-size:13px;font-weight:600;color:#e2e8f0;}
+.user-role-tag{font-size:10px;color:#4f8ef7;background:rgba(79,142,247,.15);padding:2px 7px;border-radius:4px;}
+.hdr-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid;transition:all .15s;}
+.hdr-btn.admin-btn{background:rgba(124,111,247,.15);border-color:rgba(124,111,247,.4);color:#7c6ff7;}
+.hdr-btn.admin-btn:hover{background:rgba(124,111,247,.3);}
+.hdr-btn.logout-btn{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:#f87171;}
+.hdr-btn.logout-btn:hover{background:rgba(248,113,113,.25);}
+.hdr-btn.profile-btn{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:#34d399;}
+.hdr-btn.profile-btn:hover{background:rgba(52,211,153,.25);}
+
+/* Profile Modal */
+#profileModal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;display:none;align-items:center;justify-content:center;}
+#profileModal.open{display:flex;}
+.profile-box{background:#1a1d27;border:1px solid #2d3250;border-radius:18px;width:420px;max-width:95vw;padding:36px 40px;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+.profile-box h3{font-size:17px;font-weight:700;color:#e2e8f0;margin-bottom:4px;}
+.profile-box .sub{font-size:12px;color:#94a3b8;margin-bottom:22px;}
+.profile-divider{border:none;border-top:1px solid #2d3250;margin:18px 0;}
+.profile-actions{display:flex;gap:10px;margin-top:8px;}
+#profileMsg{font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:14px;display:none;}
+#profileMsg.error{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);display:block;}
+#profileMsg.success{background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3);display:block;}
+#profileMsg.info{background:rgba(79,142,247,.15);color:#4f8ef7;border:1px solid rgba(79,142,247,.3);display:block;}
+.notif-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#f87171;margin-left:4px;vertical-align:middle;}
+</style>
+<style>
+:root {
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#222638;--accent:#4f8ef7;--accent2:#7c6ff7;
+  --green:#34d399;--red:#f87171;--yellow:#fbbf24;--orange:#fb923c;
+  --text:#e2e8f0;--text2:#94a3b8;--border:#2d3250;--radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI','PingFang TC',sans-serif;min-height:100vh;}
+
+.header{background:linear-gradient(135deg,#1a1d27,#222638);border-bottom:1px solid var(--border);padding:18px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.header h1{font-size:20px;font-weight:700;}
+.header p{font-size:12px;color:var(--text2);margin-top:3px;}
+.badges{display:flex;gap:8px;flex-wrap:wrap;}
+.badge-pill{font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;}
+.badge-q1{background:rgba(52,211,153,0.2);color:var(--green);border:1px solid rgba(52,211,153,0.4);}
+.badge-q2{background:rgba(251,191,36,0.2);color:var(--yellow);border:1px solid rgba(251,191,36,0.4);}
+.badge-update{background:rgba(79,142,247,0.2);color:var(--accent);border:1px solid rgba(79,142,247,0.4);}
+
+.tabs{display:flex;gap:4px;padding:14px 32px 0;border-bottom:1px solid var(--border);}
+.tab{padding:8px 18px;border-radius:8px 8px 0 0;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);background:transparent;border:none;border-bottom:2px solid transparent;transition:all .2s;}
+.tab:hover{color:var(--text);background:var(--bg3);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--bg2);}
+
+.content{padding:24px 32px;}
+.page{display:none;}.page.active{display:block;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kc,var(--accent));}
+.kpi-label{font-size:11px;color:var(--text2);font-weight:500;text-transform:uppercase;letter-spacing:.5px;}
+.kpi-value{font-size:24px;font-weight:700;margin-top:6px;}
+.kpi-sub{font-size:11px;margin-top:5px;}
+.up{color:var(--green);}.down{color:var(--red);}.neu{color:var(--yellow);}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+.chart-card.full{margin-bottom:18px;}
+.ct{font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px;}
+.cs{font-size:11px;color:var(--text2);margin-bottom:14px;}
+.cw canvas{max-height:260px;}.cw.tall canvas{max-height:320px;}
+
+.filter-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.fl{font-size:12px;color:var(--text2);}
+.fb{padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all .15s;}
+.fb:hover{border-color:var(--accent);color:var(--accent);}
+.fb.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;}
+.li{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);}
+.ld{width:10px;height:10px;border-radius:2px;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead tr{border-bottom:1px solid var(--border);}
+th{padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+td{padding:10px 12px;border-bottom:1px solid #1e2235;color:var(--text);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg3);}
+.bgt{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;}
+.bg{background:rgba(52,211,153,.15);color:var(--green);}
+.br{background:rgba(248,113,113,.15);color:var(--red);}
+.by{background:rgba(251,191,36,.15);color:var(--yellow);}
+.bb{background:rgba(79,142,247,.15);color:var(--accent);}
+.bo{background:rgba(251,146,60,.15);color:var(--orange);}
+
+.pb{background:var(--bg3);border-radius:4px;height:5px;margin-top:3px;}
+.pf{height:100%;border-radius:4px;}
+
+.q-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+.q-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}
+.ql{font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px;}
+.qt{font-size:11px;color:var(--text2);margin-bottom:3px;}
+.qa{font-size:18px;font-weight:700;}
+.qr{font-size:12px;margin-top:4px;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg2);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- ===== SUPABASE SETUP MODAL ===== -->
+<div id="setupModal">
+  <div class="setup-box">
+    <h3>🔧 首次設定 — 連接雲端資料庫</h3>
+    <p class="sdesc">請輸入你的 Supabase 專案資訊，設定後帳號資料將儲存於雲端，任何裝置都可共用。</p>
+    <div class="setup-step">
+      <div class="snum">① 到 supabase.com 開啟你的專案 → Settings → API</div>
+      <div style="margin-top:6px;">
+        <div class="form-group"><label>Project URL</label><input id="sbUrl" type="text" placeholder="https://xxxxxxxx.supabase.co"></div>
+        <div class="form-group"><label>anon / public key</label><input id="sbKey" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></div>
+      </div>
+    </div>
+    <div id="setupMsg" class="auth-msg" style="margin-bottom:12px;"></div>
+    <button class="auth-btn primary" onclick="saveSupabaseConfig()" style="margin-top:4px">連接並啟動</button>
+    <p style="font-size:11px;color:#475569;text-align:center;margin-top:12px">設定資訊僅存在此瀏覽器 localStorage，不會上傳任何地方</p>
+  </div>
+</div>
+
+<!-- ===== AUTH OVERLAY ===== -->
+<div id="authOverlay">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div style="font-size:36px">📊</div>
+      <h2>BD 銷售月報系統</h2>
+      <p>請登入以進入後台儀表板</p>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="showAuthTab('login')">登入</div>
+      <div class="auth-tab" onclick="showAuthTab('register')">申請帳號</div>
+    </div>
+
+    <!-- Login Panel -->
+    <div id="loginPanel" class="auth-panel active">
+      <div id="loginMsg" class="auth-msg"></div>
+      <div class="form-group"><label>帳號</label><input id="loginUser" type="text" placeholder="輸入帳號" autocomplete="username"></div>
+      <div class="form-group"><label>密碼</label><input id="loginPass" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <button class="auth-btn primary" onclick="doLogin()">登入後台</button>
+    </div>
+
+    <!-- Register Panel -->
+    <div id="registerPanel" class="auth-panel">
+      <div id="registerMsg" class="auth-msg"></div>
+      <div class="form-group"><label>顯示名稱</label><input id="regName" type="text" placeholder="你的姓名（如：小明）"></div>
+      <div class="form-group"><label>帳號</label><input id="regUser" type="text" placeholder="設定登入帳號（英文數字）"></div>
+      <div class="form-group"><label>密碼</label><input id="regPass" type="password" placeholder="設定密碼（至少 6 碼）"></div>
+      <div class="form-group"><label>確認密碼</label><input id="regPass2" type="password" placeholder="再次輸入密碼"></div>
+      <button class="auth-btn primary" onclick="doRegister()">送出申請</button>
+      <p style="font-size:11px;color:#94a3b8;text-align:center;margin-top:12px">申請後需等待管理員審核才能登入</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PROFILE MODAL ===== -->
+<div id="profileModal">
+  <div class="profile-box">
+    <h3>👤 個人設定</h3>
+    <p class="sub">修改您的顯示名稱或登入密碼</p>
+    <div id="profileMsg"></div>
+
+    <div class="form-group">
+      <label>顯示名稱</label>
+      <input type="text" id="profileName" placeholder="輸入新名稱（留空則不更改）">
+    </div>
+
+    <hr class="profile-divider">
+
+    <div class="form-group">
+      <label>目前密碼 <span style="color:#f87171">*</span></label>
+      <input type="password" id="profileCurrentPass" placeholder="請輸入目前密碼">
+    </div>
+    <div class="form-group">
+      <label>新密碼</label>
+      <input type="password" id="profileNewPass" placeholder="輸入新密碼（留空則不更改）">
+    </div>
+    <div class="form-group">
+      <label>確認新密碼</label>
+      <input type="password" id="profileNewPass2" placeholder="再次輸入新密碼">
+    </div>
+
+    <div class="profile-actions">
+      <button class="auth-btn primary" style="flex:1" onclick="doUpdateProfile()">儲存變更</button>
+      <button class="action-btn btn-close" onclick="closeProfileModal()" style="padding:8px 20px">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN PANEL ===== -->
+<div id="adminPanel">
+  <div class="admin-box">
+    <h3>⚙️ 帳號管理</h3>
+    <div class="sub">審核申請、管理用戶帳號</div>
+
+    <div class="admin-section">
+      <h4>待審核申請 <span id="pendingCount"></span></h4>
+      <div id="pendingList"></div>
+    </div>
+
+    <div class="admin-section">
+      <h4>已核准用戶</h4>
+      <div id="approvedList"></div>
+    </div>
+
+    <div class="admin-section">
+      <h4>📊 數據同步</h4>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">從 Google Sheets 同步最新銷售數據至雲端資料庫（需登入 Google 帳號）</div>
+      <button class="action-btn btn-approve" style="padding:8px 20px;font-size:13px;" onclick="doSyncData()">🔄 更新數據</button>
+      <div id="syncMsg" class="auth-msg" style="display:none;margin-top:10px;"></div>
+    </div>
+
+    <div style="text-align:right;margin-top:8px;">
+      <button class="action-btn btn-close" onclick="closeAdminPanel()">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN DASHBOARD ===== -->
+<div id="mainApp" style="display:none">
+
+<div class="header">
+  <div>
+    <h1>📊 BD 銷售月報儀表板</h1>
+    <p>2026 年度業績追蹤 · 資料更新：2026/05/20</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <div class="badges">
+      <span class="badge-pill badge-q1">✅ Q1 達成 101.9%</span>
+      <span class="badge-pill badge-q2">📊 4月 87.8% · 5月進行中</span>
+      <span class="badge-pill badge-update">🔄 最新版本 260520</span>
+    </div>
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">J</div>
+      <div>
+        <div class="user-name" id="userDisplayName">jacky</div>
+        <div class="user-role-tag" id="userRoleTag">管理員</div>
+      </div>
+      <button class="hdr-btn admin-btn" id="adminBtn" onclick="openAdminPanel()" style="display:none">⚙️ 帳號管理<span class="notif-dot" id="pendingDot" style="display:none"></span></button>
+      <button class="hdr-btn profile-btn" onclick="openProfileModal()">👤 個人設定</button>
+      <button class="hdr-btn logout-btn" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('overview',this)">總覽</button>
+  <button class="tab" onclick="switchTab('channel',this)">通路分析</button>
+  <button class="tab" onclick="switchTab('yoy',this)">YOY 比較</button>
+  <button class="tab" onclick="switchTab('quarter',this)">季度進度</button>
+</div>
+
+<div class="content">
+
+<!-- ===== 總覽 ===== -->
+<div id="page-overview" class="page active">
+  <div class="kpi-row">
+    <div class="kpi-card" style="--kc:#4f8ef7">
+      <div class="kpi-label">年度銷售目標</div>
+      <div class="kpi-value">$6,502萬</div>
+      <div class="kpi-sub neu">全年目標 65,021,005</div>
+    </div>
+    <div class="kpi-card" style="--kc:#34d399">
+      <div class="kpi-label">年累計實際（1~5月）</div>
+      <div class="kpi-value">$2,115萬</div>
+      <div class="kpi-sub up">▲ 含 5/20 前部分數據</div>
+    </div>
+    <div class="kpi-card" style="--kc:#fbbf24">
+      <div class="kpi-label">年度累計達成率</div>
+      <div class="kpi-value">32.5%</div>
+      <div class="kpi-sub neu">1~4月完整 + 5月進行中</div>
+    </div>
+    <div class="kpi-card" style="--kc:#7c6ff7">
+      <div class="kpi-label">Q1 達成率</div>
+      <div class="kpi-value up">101.9%</div>
+      <div class="kpi-sub up">▲ 14,386,407 / 14,115,000</div>
+    </div>
+  </div>
+
+  <div class="chart-card full">
+    <div class="ct">月度銷售 — 目標 vs 實際</div>
+    <div class="cs">BD 彙整全通路（1~4月完整，5月進行中）</div>
+    <div class="legend">
+      <div class="li"><div class="ld" style="background:#4f8ef7"></div>月度目標</div>
+      <div class="li"><div class="ld" style="background:#34d399"></div>實際達標（≥100%）</div>
+      <div class="li"><div class="ld" style="background:#fbbf24"></div>實際進行中</div>
+      <div class="li"><div class="ld" style="background:#f87171"></div>實際未達標</div>
+    </div>
+    <div class="cw tall"><canvas id="monthlyChart"></canvas></div>
+  </div>
+
+  <div class="chart-card full">
+    <div class="ct">各月達成率</div>
+    <div class="cs">有數據月份的目標達成詳情</div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>月份</th><th>目標</th><th>實際</th><th>達成率</th><th>狀態</th><th>進度</th></tr></thead>
+      <tbody id="achieveTable"></tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 通路分析 ===== -->
+<div id="page-channel" class="page">
+  <div class="filter-row">
+    <span class="fl">月份：</span>
+    <button class="fb active" onclick="setM('all',this)">全期（1~5月）</button>
+    <button class="fb" onclick="setM(0,this)">1月</button>
+    <button class="fb" onclick="setM(1,this)">2月</button>
+    <button class="fb" onclick="setM(2,this)">3月</button>
+    <button class="fb" onclick="setM(3,this)">4月</button>
+    <button class="fb" onclick="setM(4,this)">5月▶</button>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card"><div class="ct">各通路銷售佔比</div><div class="cs">實際銷售金額佔比</div><div class="cw"><canvas id="pieChart"></canvas></div></div>
+    <div class="chart-card"><div class="ct">各通路銷售排名</div><div class="cs">實際銷售金額</div><div class="cw"><canvas id="rankChart"></canvas></div></div>
+  </div>
+  <div class="chart-card full"><div class="ct">各通路目標達成率</div><div class="cs">與月度/季度目標比較（含 100% 基準線）</div><div class="cw tall"><canvas id="rateChart"></canvas></div></div>
+  <div class="chart-card full"><div class="ct">各通路季度達成率</div><div class="cs">Q1 / Q2 / Q3 / Q4 季度達成率分析（%）</div><div class="cw tall"><canvas id="qRateChart"></canvas></div></div>
+  <div class="chart-card full">
+    <div class="ct">通路業績明細</div>
+    <div class="cs">年度目標、累計實際、達成率、銷售佔比</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>類別</th><th>通路</th><th>年度目標</th><th>累計實際</th><th>達成率</th><th>佔比</th><th>Q1達成率</th><th>Q2達成率</th></tr></thead><tbody id="chTable"></tbody></table></div>
+  </div>
+</div>
+
+<!-- ===== YOY ===== -->
+<div id="page-yoy" class="page">
+  <div class="kpi-row">
+    <div class="kpi-card" style="--kc:#34d399"><div class="kpi-label">1月 YOY</div><div class="kpi-value up">+17.4%</div><div class="kpi-sub">5,547,884 → 6,512,524</div></div>
+    <div class="kpi-card" style="--kc:#f87171"><div class="kpi-label">2月 YOY</div><div class="kpi-value down">-29.5%</div><div class="kpi-sub">5,233,905 → 3,691,624</div></div>
+    <div class="kpi-card" style="--kc:#fbbf24"><div class="kpi-label">3月 YOY</div><div class="kpi-value down">-2.1%</div><div class="kpi-sub">4,270,228 → 4,182,259</div></div>
+    <div class="kpi-card" style="--kc:#f87171"><div class="kpi-label">4月 YOY</div><div class="kpi-value down">-16.4%</div><div class="kpi-sub">5,006,215 → 4,186,615</div></div>
+  </div>
+  <div class="chart-card full">
+    <div class="ct">月度 2025 vs 2026 對比</div>
+    <div class="cs">BD 彙整各月銷售同期對比（含 2026 目標線）</div>
+    <div class="legend">
+      <div class="li"><div class="ld" style="background:#94a3b8"></div>2025 實際</div>
+      <div class="li"><div class="ld" style="background:#4f8ef7"></div>2026 實際</div>
+      <div class="li"><div class="ld" style="background:#fbbf24"></div>2026 目標</div>
+    </div>
+    <div class="cw tall"><canvas id="yoyChart"></canvas></div>
+  </div>
+  <div class="chart-card full">
+    <div class="ct">各通路 YOY 達成比較（1~4月累計）</div>
+    <div class="cs">2025 vs 2026 各通路累積銷售</div>
+    <div class="cw tall"><canvas id="chYoyChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ===== 季度進度 ===== -->
+<div id="page-quarter" class="page">
+  <div class="q-grid">
+    <div class="q-card">
+      <div class="ql">Q1（1~3月）✅</div>
+      <div class="qt">目標：14,115,000</div>
+      <div class="qa up">$14,386,407</div>
+      <div class="qr up">▲ 101.9%</div>
+      <div class="pb" style="margin-top:8px"><div class="pf" style="background:#34d399;width:100%"></div></div>
+    </div>
+    <div class="q-card">
+      <div class="ql">Q2（4~6月）⏳</div>
+      <div class="qt">目標：17,504,792</div>
+      <div class="qa neu">$6,763,662</div>
+      <div class="qr neu">▶ 進行中（4月完整 + 5月部分）</div>
+      <div class="pb" style="margin-top:8px"><div class="pf" style="background:#fbbf24;width:38.6%"></div></div>
+    </div>
+    <div class="q-card">
+      <div class="ql">Q3（7~9月）⏳</div>
+      <div class="qt">目標：17,677,492</div>
+      <div class="qa" style="color:#475569">$0（待統計）</div>
+      <div class="qr" style="color:#475569">– 尚未開始</div>
+      <div class="pb" style="margin-top:8px"><div class="pf" style="background:#334155;width:0%"></div></div>
+    </div>
+    <div class="q-card">
+      <div class="ql">Q4（10~12月）⏳</div>
+      <div class="qt">目標：15,723,721</div>
+      <div class="qa" style="color:#475569">$0（待統計）</div>
+      <div class="qr" style="color:#475569">– 尚未開始</div>
+      <div class="pb" style="margin-top:8px"><div class="pf" style="background:#334155;width:0%"></div></div>
+    </div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card"><div class="ct">季度目標 vs 實際</div><div class="cs">各季累計完成狀況</div><div class="cw"><canvas id="qBarChart"></canvas></div></div>
+    <div class="chart-card"><div class="ct">年度完成率</div><div class="cs">全年累計進度（1~5月）</div><div class="cw"><canvas id="annDonut"></canvas></div></div>
+  </div>
+  <div class="chart-card full">
+    <div class="ct">全年月度銷售分布</div>
+    <div class="cs">各月目標 vs 實際（5月後為待完成）</div>
+    <div class="cw tall"><canvas id="fyChart"></canvas></div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /mainApp -->
+
+<script>
+// ===================== AUTH SYSTEM (Supabase 雲端版) =====================
+const { createClient } = supabase;
+
+// Hardcoded Supabase config — no user setup required
+const SB_URL = 'https://rnfoiterxmmryvwbfyua.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuZm9pdGVyeG1tcnl2d2JmeXVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTY5OTYsImV4cCI6MjA5NDc3Mjk5Nn0.3l8kxPTu4D8evc1PkzE9OZXHJlKjYk-jvp-d2W8_rbk';
+let sb = createClient(SB_URL, SB_KEY);
+
+// ---- Config (kept for backward compat with setup modal) ----
+function getSbConfig() { return { url: SB_URL, key: SB_KEY }; }
+function saveSbConfig(url, key) {}
+
+async function saveSupabaseConfig() {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  const msg = document.getElementById('setupMsg');
+  if (!url || !key) { msg.className='auth-msg error'; msg.textContent='請填寫 URL 和 Key'; return; }
+  if (!url.startsWith('https://')) { msg.className='auth-msg error'; msg.textContent='URL 格式錯誤，應以 https:// 開頭'; return; }
+  msg.className='auth-msg info'; msg.textContent='連線中...';
+  try {
+    const client = createClient(url, key);
+    const { error } = await client.from('bd_users').select('id').limit(1);
+    if (error) throw error;
+    saveSbConfig(url, key);
+    sb = client;
+    document.getElementById('setupModal').classList.remove('open');
+    await initAuth();
+  } catch(e) {
+    msg.className='auth-msg error';
+    msg.textContent='連線失敗：' + (e.message||e) + '（請確認 URL/Key 正確，且已執行 schema.sql）';
+  }
+}
+
+// ---- Hash ----
+async function hashPass(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ---- Session ----
+function getSession() { try { return JSON.parse(sessionStorage.getItem('bd_sess')||'null'); } catch(e){return null;} }
+function saveSession(s) { sessionStorage.setItem('bd_sess', JSON.stringify(s)); }
+function clearSession() { sessionStorage.removeItem('bd_sess'); }
+
+// ---- Init ----
+async function initAuth() {
+  const cfg = getSbConfig();
+  if (!cfg) { document.getElementById('setupModal').classList.add('open'); return; }
+  if (!sb) sb = createClient(cfg.url, cfg.key);
+  const sess = getSession();
+  if (sess) {
+    const { data } = await sb.from('bd_users').select('*').eq('username', sess.username).eq('status','approved').single();
+    if (data) { enterDashboard(data); return; }
+  }
+  document.getElementById('authOverlay').classList.remove('hidden');
+}
+
+// ---- UI helpers ----
+function showAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.auth-panel').forEach(p=>p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(tab==='login'?'loginPanel':'registerPanel').classList.add('active');
+  clearAuthMsgs();
+}
+function clearAuthMsgs() {
+  ['loginMsg','registerMsg'].forEach(id=>{const el=document.getElementById(id);el.className='auth-msg';el.textContent='';});
+}
+function showMsg(id, msg, type='error') {
+  const el=document.getElementById(id); el.className='auth-msg '+type; el.textContent=msg;
+}
+
+// ---- Login ----
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim().toLowerCase();
+  const password = document.getElementById('loginPass').value;
+  if (!username||!password) { showMsg('loginMsg','請輸入帳號和密碼'); return; }
+  showMsg('loginMsg','驗證中...','info');
+  try {
+    const hash = await hashPass(password);
+    const { data, error } = await sb.from('bd_users').select('*').eq('username', username).single();
+    if (error || !data) { showMsg('loginMsg','帳號不存在'); return; }
+    if (data.password_hash !== hash) { showMsg('loginMsg','密碼錯誤'); return; }
+    if (data.status==='pending') { showMsg('loginMsg','帳號審核中，請等管理員核准 ⏳','info'); return; }
+    if (data.status==='disabled') { showMsg('loginMsg','帳號已停用，請聯繫管理員'); return; }
+    saveSession({username:data.username, name:data.name, role:data.role});
+    enterDashboard(data);
+  } catch(e) {
+    showMsg('loginMsg','連線錯誤：'+e.message);
+  }
+}
+
+// ---- Register ----
+async function doRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const username = document.getElementById('regUser').value.trim().toLowerCase();
+  const pass = document.getElementById('regPass').value;
+  const pass2 = document.getElementById('regPass2').value;
+  if (!name||!username||!pass) { showMsg('registerMsg','請填寫所有欄位'); return; }
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) { showMsg('registerMsg','帳號僅限英文小寫、數字、底線，3~20 字'); return; }
+  if (pass.length<6) { showMsg('registerMsg','密碼至少 6 個字元'); return; }
+  if (pass!==pass2) { showMsg('registerMsg','兩次密碼不一致'); return; }
+  showMsg('registerMsg','送出中...','info');
+  try {
+    const hash = await hashPass(pass);
+    const { error } = await sb.from('bd_users').insert({username, name, password_hash:hash, role:'viewer', status:'pending'});
+    if (error) {
+      if (error.code==='23505') { showMsg('registerMsg','帳號已被使用，請換一個'); return; }
+      throw error;
+    }
+    showMsg('registerMsg','申請已送出！等待管理員審核後即可登入 ✅','success');
+    ['regName','regUser','regPass','regPass2'].forEach(id=>document.getElementById(id).value='');
+  } catch(e) {
+    showMsg('registerMsg','送出失敗：'+e.message);
+  }
+}
+
+// ---- Enter Dashboard ----
+function enterDashboard(user) {
+  document.getElementById('authOverlay').classList.add('hidden');
+  document.getElementById('mainApp').style.display='block';
+  document.getElementById('userAvatar').textContent=(user.name||user.username).charAt(0).toUpperCase();
+  document.getElementById('userDisplayName').textContent=user.name||user.username;
+  document.getElementById('userRoleTag').textContent=user.role==='admin'?'管理員':'檢視者';
+  if (user.role==='admin') {
+    document.getElementById('adminBtn').style.display='';
+    checkPendingNotif();
+  }
+}
+
+// ---- Logout ----
+function doLogout() {
+  clearSession();
+  document.getElementById('mainApp').style.display='none';
+  document.getElementById('authOverlay').classList.remove('hidden');
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  clearAuthMsgs();
+  document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',i===0));
+  document.querySelectorAll('.auth-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+}
+
+// ---- Admin Panel ----
+async function checkPendingNotif() {
+  try {
+    const { count } = await sb.from('bd_users').select('*',{count:'exact',head:true}).eq('status','pending');
+    const dot=document.getElementById('pendingDot');
+    if (dot) dot.style.display=count>0?'':'none';
+  } catch(e){}
+}
+
+function openAdminPanel() {
+  renderAdminPanel();
+  document.getElementById('adminPanel').classList.add('open');
+}
+function closeAdminPanel() {
+  document.getElementById('adminPanel').classList.remove('open');
+  checkPendingNotif();
+}
+
+async function renderAdminPanel() {
+  const { data: all } = await sb.from('bd_users').select('*').order('created_at');
+  const users = all||[];
+  const pending = users.filter(u=>u.status==='pending');
+  const others = users.filter(u=>u.status!=='pending');
+
+  const pc=document.getElementById('pendingCount');
+  pc.innerHTML=pending.length>0?`<span style="display:inline-block;background:#f87171;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:6px">${pending.length}</span>`:'';
+
+  const pList=document.getElementById('pendingList');
+  pList.innerHTML=pending.length===0?'<div class="empty-msg">目前沒有待審核的申請</div>':
+    pending.map(u=>`<div class="user-row">
+      <div class="user-avatar" style="width:28px;height:28px;font-size:11px">${u.name.charAt(0).toUpperCase()}</div>
+      <div class="uname">${u.name} <span style="color:#94a3b8;font-size:11px;font-weight:400">@${u.username}</span></div>
+      <span class="ustatus pending">待審核</span>
+      <button class="action-btn btn-approve" onclick="adminAction('approve','${u.username}')">✓ 核准</button>
+      <button class="action-btn btn-delete" onclick="adminAction('delete','${u.username}')">✕ 拒絕</button>
+    </div>`).join('');
+
+  const aList=document.getElementById('approvedList');
+  aList.innerHTML=others.length===0?'<div class="empty-msg">尚無已核准用戶</div>':
+    others.map(u=>`<div class="user-row">
+      <div class="user-avatar" style="width:28px;height:28px;font-size:11px">${(u.name||u.username).charAt(0).toUpperCase()}</div>
+      <div class="uname">${u.name||u.username} <span style="color:#94a3b8;font-size:11px;font-weight:400">@${u.username}</span></div>
+      <span class="urole">${u.role==='admin'?'管理員':'檢視者'}</span>
+      <span class="ustatus ${u.status}">${u.status==='approved'?'啟用中':'已停用'}</span>
+      ${u.username!=='jacky'?`
+        ${u.status==='approved'
+          ?`<button class="action-btn btn-disable" onclick="adminAction('disable','${u.username}')">停用</button>`
+          :`<button class="action-btn btn-enable" onclick="adminAction('enable','${u.username}')">啟用</button>`}
+        <button class="action-btn btn-delete" onclick="adminAction('delete','${u.username}')">刪除</button>
+      `:'<span style="font-size:11px;color:#475569">（主帳號）</span>'}
+    </div>`).join('');
+}
+
+async function adminAction(action, username) {
+  if (action==='delete'&&!confirm(`確定要刪除 @${username}？`)) return;
+  const statusMap={approve:'approved',disable:'disabled',enable:'approved'};
+  try {
+    if (action==='delete') {
+      await sb.from('bd_users').delete().eq('username',username);
+    } else {
+      await sb.from('bd_users').update({status:statusMap[action]}).eq('username',username);
+    }
+    renderAdminPanel();
+  } catch(e) { alert('操作失敗：'+e.message); }
+}
+
+// ---- Profile Settings ----
+function openProfileModal() {
+  const sess = getSession();
+  if (!sess) return;
+  document.getElementById('profileName').value = sess.name || '';
+  document.getElementById('profileCurrentPass').value = '';
+  document.getElementById('profileNewPass').value = '';
+  document.getElementById('profileNewPass2').value = '';
+  const msg = document.getElementById('profileMsg');
+  msg.className = 'auth-msg'; msg.textContent = '';
+  document.getElementById('profileModal').classList.add('open');
+}
+function closeProfileModal() {
+  document.getElementById('profileModal').classList.remove('open');
+}
+
+async function doUpdateProfile() {
+  const sess = getSession();
+  if (!sess) return;
+  const newName      = document.getElementById('profileName').value.trim();
+  const currentPass  = document.getElementById('profileCurrentPass').value;
+  const newPass      = document.getElementById('profileNewPass').value;
+  const newPass2     = document.getElementById('profileNewPass2').value;
+  const msg          = document.getElementById('profileMsg');
+
+  const showProfileMsg = (text, type='error') => {
+    msg.className = 'auth-msg ' + type; msg.textContent = text;
+  };
+
+  if (!currentPass) { showProfileMsg('請輸入目前密碼以驗證身分'); return; }
+  if (newPass && newPass.length < 6) { showProfileMsg('新密碼至少 6 個字元'); return; }
+  if (newPass && newPass !== newPass2) { showProfileMsg('兩次新密碼不一致'); return; }
+  if (!newName && !newPass) { showProfileMsg('請至少修改名稱或密碼其中一項'); return; }
+
+  showProfileMsg('驗證中...', 'info');
+  try {
+    const currentHash = await hashPass(currentPass);
+    const { data, error } = await sb.from('bd_users').select('*').eq('username', sess.username).single();
+    if (error || !data) { showProfileMsg('無法取得帳號資料'); return; }
+    if (data.password_hash !== currentHash) { showProfileMsg('目前密碼錯誤'); return; }
+
+    const updates = {};
+    if (newName && newName !== data.name) updates.name = newName;
+    if (newPass) updates.password_hash = await hashPass(newPass);
+
+    if (Object.keys(updates).length === 0) { showProfileMsg('沒有任何變更', 'info'); return; }
+
+    showProfileMsg('儲存中...', 'info');
+    const { error: upErr } = await sb.from('bd_users').update(updates).eq('username', sess.username);
+    if (upErr) throw upErr;
+
+    // Update session & header display
+    const updatedName = updates.name || data.name;
+    saveSession({ ...sess, name: updatedName });
+    document.getElementById('userDisplayName').textContent = updatedName;
+    document.getElementById('userAvatar').textContent = updatedName.charAt(0).toUpperCase();
+
+    showProfileMsg('✅ 變更已儲存！' + (newPass ? '下次登入請使用新密碼。' : ''), 'success');
+    document.getElementById('profileCurrentPass').value = '';
+    document.getElementById('profileNewPass').value = '';
+    document.getElementById('profileNewPass2').value = '';
+  } catch(e) {
+    showProfileMsg('儲存失敗：' + e.message);
+  }
+}
+
+// ---- Start ----
+initAuth();
+// ===================== END AUTH SYSTEM =====================
+</script>
+
+<script>
+// ===================== CONFIG =====================
+const GS_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1xLlFyfs8upF0rwAWkWWCgZH9fNdqxJYg89HBD_4MlxQ/export?format=csv&gid=2049949837';
+const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+// ===================== DEFAULT DATA (hardcoded fallback) =====================
+let bdMonthly = [
+  {target:5798000, actual:6512524, rate:1.1232},
+  {target:3595000, actual:3691624, rate:1.0269},
+  {target:4722000, actual:4182259, rate:0.8857},
+  {target:4769819, actual:4186615, rate:0.8778},
+  {target:5513156, actual:3447091, rate:0.6252},
+  {target:6681816, actual:0, rate:0},
+  {target:5107693, actual:0, rate:0},
+  {target:5904533, actual:0, rate:0},
+  {target:5816517, actual:0, rate:0},
+  {target:4844051, actual:0, rate:0},
+  {target:5527753, actual:0, rate:0},
+  {target:4881292, actual:0, rate:0}
+];
+
+let channels = [
+  {cat:'M-1-1自營電商',name:'官網',   annT:10530505,m:[1085388,707356,844865,663352,456899,0,0,0,0,0,0,0],t:[900000,800000,940000,838819,1005156,971816,859693,939908,760892,708426,1109628,696167]},
+  {cat:'M-1-2自營電商',name:'Shopee', annT:7140000, m:[847549,797149,490616,526579,0,0,0,0,0,0,0,0],      t:[680000,450000,550000,520000,660000,760000,410000,670000,650000,550000,720000,520000]},
+  {cat:'M-2-1線上通路',name:'PChome', annT:0,       m:[14134,13629,6118,18567,16505,0,0,0,0,0,0,0],       t:[0,0,0,0,0,0,0,0,0,0,0,0]},
+  {cat:'M-2-1線上通路',name:'Books',  annT:1040000, m:[72176,60738,51977,51953,0,0,0,0,0,0,0,0],          t:[110000,90000,85000,80000,75000,100000,70000,100000,85000,75000,85000,85000]},
+  {cat:'M-2-1線上通路',name:'momo',   annT:20590000,m:[1147377,1021551,981202,1347120,0,0,0,0,0,0,0,0],   t:[1300000,1300000,1500000,1600000,1650000,2000000,1400000,1800000,1750000,1350000,1700000,1340000]},
+  {cat:'M-2-1線上通路',name:'iqueen', annT:155000,  m:[4437,1564,1916,1254,0,0,0,0,0,0,0,0],              t:[10000,10000,10000,10000,10000,10000,10000,10000,10000,15000,15000,15000]},
+  {cat:'M-2-2線下通路',name:'寶雅',   annT:1810000, m:[98685,93240,525096,323730,0,0,0,0,0,0,0,0],        t:[150000,80000,120000,120000,150000,150000,0,0,0,0,0,0]},
+  {cat:'M-3團購',      name:'團購',   annT:14257500,m:[2272046,787693,610763,666836,0,0,0,0,0,0,0,0],     t:[2350000,600000,1150000,1000000,1250000,2400000,1750000,2200000,2000000,1500000,1500000,557500]},
+  {cat:'M-4',          name:'良品嚴選',annT:828000, m:[0,0,45988,0,0,0,0,0,0,0,0,0],                     t:[38000,85000,27000,186000,173000,0,0,0,0,0,0,0]},
+  {cat:'M-4',          name:'實體店家',annT:3870000,m:[684795,208704,175791,311389,0,0,0,0,0,0,0,0],      t:[150000,120000,230000,300000,300000,300000,350000,300000,350000,350000,270000,350000]},
+  {cat:'M-5',          name:'專案',   annT:3190000, m:[285937,0,447927,275835,2973786,0,0,0,0,0,0,0],    t:[100000,50000,100000,100000,100000,100000,100000,100000,100000,100000,100000,100000]},
+];
+
+let yoy2025 = [5547884,5233905,4270228,5006215,6469602,6811774,5972132,5168338,4924890,4529323,5056299,5027518];
+let yoy2026 = bdMonthly.map(m=>m.actual);
+
+let ch2025q = [
+  {name:'官網',   v2025:761532+880854+899601+822372,      v2026:1085388+707356+844865+663352},
+  {name:'Shopee', v2025:607862+467007+538285+509355,       v2026:847549+797149+490616+526579},
+  {name:'PChome', v2025:31693+38273+35885+49645,           v2026:14134+13629+6118+18567},
+  {name:'Books',  v2025:105396+100024+79015+77369,         v2026:72176+60738+51977+51953},
+  {name:'momo',   v2025:985743+1364132+1367261+1556907,    v2026:1147377+1021551+981202+1347120},
+  {name:'iqueen', v2025:10745+6223+6699+12226,             v2026:4437+1564+1916+1254},
+  {name:'寶雅',   v2025:0,                                  v2026:98685+93240+525096+323730},
+  {name:'團購',   v2025:0,                                  v2026:2272046+787693+610763+666836},
+  {name:'實體店家',v2025:0,                                 v2026:684795+208704+175791+311389},
+  {name:'專案',   v2025:0,                                  v2026:285937+0+447927+275835},
+];
+
+// ===================== SUPABASE SYNC FUNCTIONS =====================
+function _pn(s){const n=parseFloat((s||'').toString().replace(/[^0-9.-]/g,''));return isNaN(n)?0:Math.round(n);}
+function _prow(line){const c=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){c.push(cur.trim());cur='';}else{cur+=ch;}}c.push(cur.trim());return c;}
+
+async function loadDataFromSupabase() {
+  try {
+    const {data,error}=await sb.from('bd_monthly_data').select('*').eq('year',2026).order('month');
+    if(error||!data||data.length<12)return false;
+    const bdRows=data.filter(d=>d.channel_name==='BD彙整');
+    if(!bdRows.length)return false;
+    bdMonthly=Array(12).fill(0).map((_,i)=>{const r=bdRows.find(d=>d.month===i+1)||{};const t=r.target||0,a=r.actual||0;return{target:t,actual:a,rate:t>0?a/t:0};});
+    const names=[...new Set(data.filter(d=>d.channel_name!=='BD彙整').map(d=>d.channel_name))];
+    channels=names.map(name=>{const rows=data.filter(d=>d.channel_name===name);return{cat:rows[0]?.channel_type||'',name,annT:rows[0]?.annual_target||0,m:Array(12).fill(0).map((_,i)=>rows.find(d=>d.month===i+1)?.actual||0),t:Array(12).fill(0).map((_,i)=>rows.find(d=>d.month===i+1)?.target||0)};});
+    const bdYoy=data.filter(d=>d.channel_name==='BD彙整');
+    yoy2025=Array(12).fill(0).map((_,i)=>bdYoy.find(d=>d.month===i+1)?.actual_2025||0);
+    yoy2026=bdMonthly.map(m=>m.actual);
+    const cM=bdMonthly.reduce((a,m,i)=>{if(m.actual>0)a.push(i);return a;},[]);
+    ch2025q=names.filter(n=>n!=='BD彙整').map(name=>{const rows=data.filter(d=>d.channel_name===name);let v2025=0,v2026=0;cM.forEach(i=>{const r=rows.find(d=>d.month===i+1)||{};v2025+=r.actual_2025||0;v2026+=r.actual||0;});return{name,v2025,v2026};}).filter(c=>c.v2026>0);
+    console.log('✅ Data loaded from Supabase');
+    return true;
+  } catch(e){console.warn('Supabase load:',e.message);return false;}
+}
+
+async function syncFromGSheets(msgEl) {
+  const sess=getSession();
+  if(!sess||sess.role!=='admin'){if(msgEl){msgEl.className='auth-msg error';msgEl.textContent='需要管理員權限';msgEl.style.display='block';}return;}
+  const show=(txt,type='info')=>{if(msgEl){msgEl.className='auth-msg '+type;msgEl.textContent=txt;msgEl.style.display='block';}};
+  show('🔄 從 Google Sheets 讀取數據...');
+  try {
+    const resp=await fetch(GS_SHEET_URL);
+    if(!resp.ok)throw new Error(`無法存取試算表 (HTTP ${resp.status})，請確認已登入 Google`);
+    const text=await resp.text();
+    const lines=text.split('\n');
+    const mainRows=lines.slice(2,18).map(_prow).filter(r=>r[1]?.trim());
+    const yoyRows=lines.slice(22,38).map(_prow).filter(r=>r[1]?.trim());
+    const yoyMap={};
+    yoyRows.forEach(r=>{const n=r[1]?.trim().replace(/^\s+/,'');if(!n)return;yoyMap[n]=Array(12).fill(0).map((_,i)=>_pn(r[2+i*3]));});
+    show(`📋 解析 ${mainRows.length} 個通路，寫入資料庫...`);
+    const upserts=[];
+    mainRows.forEach(r=>{
+      const channel_name=r[1]?.trim().replace(/^\s+/,'');
+      const channel_type=r[0]?.trim().replace(/^\s+/,'');
+      const annual_target=_pn(r[38]);
+      for(let m=1;m<=12;m++){const b=2+(m-1)*3;upserts.push({channel_name,channel_type,month:m,year:2026,target:_pn(r[b]),actual:_pn(r[b+1]),annual_target,actual_2025:yoyMap[channel_name]?.[m-1]??0,updated_at:new Date().toISOString()});}
+    });
+    const{error}=await sb.from('bd_monthly_data').upsert(upserts,{onConflict:'channel_name,month,year'});
+    if(error)throw error;
+    show(`✅ 已同步 ${mainRows.length} 個通路 × 12 個月！重新載入中...`,'success');
+    setTimeout(()=>location.reload(),1800);
+  }catch(e){show('❌ 同步失敗：'+e.message,'error');}
+}
+
+// ===================== HELPERS =====================
+Chart.defaults.color='#94a3b8';
+Chart.defaults.font.family="'Segoe UI','PingFang TC',sans-serif";
+Chart.defaults.font.size=12;
+const grid='rgba(45,50,80,0.8)';
+const tip={backgroundColor:'#1a1d27',borderColor:'#2d3250',borderWidth:1,padding:11};
+
+function fmt(n){if(n>=1e6)return(n/1e6).toFixed(2)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n;}
+function fc(n){return '$'+n.toLocaleString('zh-TW');}
+function rateColor(r){return r>=1?'rgba(52,211,153,.85)':r>=0.85?'rgba(251,191,36,.85)':r>0?'rgba(248,113,113,.85)':'rgba(79,142,247,.5)';}
+function rateBorder(r){return r>=1?'#34d399':r>=0.85?'#fbbf24':r>0?'#f87171':'#4f8ef7';}
+const pal=['#4f8ef7','#34d399','#fbbf24','#f87171','#7c6ff7','#fb923c','#22d3ee','#a78bfa','#4ade80','#f472b6','#67e8f9'];
+
+// Quarterly rate helper: actual / target for quarter q (1-4)
+function chQRate(ch,q){
+  const s=(q-1)*3,e=q*3;let act=0,tgt=0;
+  for(let i=s;i<e;i++){act+=ch.m[i]||0;tgt+=(ch.t?.[i]>0?ch.t[i]:(ch.annT>0?ch.annT/12:0));}
+  return(act>0&&tgt>0)?(act/tgt*100):null;
+}
+
+// ===================== MONTHLY CHART =====================
+let _monthlyC;
+function renderMonthlyChart(){
+  if(_monthlyC)_monthlyC.destroy();
+  _monthlyC=new Chart(document.getElementById('monthlyChart'),{
+    type:'bar',
+    data:{
+      labels:months,
+      datasets:[
+        {label:'月度目標',data:bdMonthly.map(m=>m.target),backgroundColor:'rgba(79,142,247,.2)',borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4,order:2},
+        {label:'實際銷售',data:bdMonthly.map(m=>m.actual||null),
+         backgroundColor:bdMonthly.map(m=>rateColor(m.rate)),
+         borderColor:bdMonthly.map(m=>rateBorder(m.rate)),
+         borderWidth:1.5,borderRadius:4,order:1}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{display:false},tooltip:{...tip,callbacks:{label:ctx=>{
+        const m=bdMonthly[ctx.dataIndex];
+        if(ctx.datasetIndex===1&&m.rate)return` ${ctx.dataset.label}: ${fc(ctx.raw)} (${(m.rate*100).toFixed(1)}%)`;
+        return` ${ctx.dataset.label}: ${fc(ctx.raw||0)}`;
+      }}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}}}
+    }
+  });
+}
+
+// ===================== ACHIEVE TABLE =====================
+function renderAchieveTable(){
+  const lastActualIdx=bdMonthly.reduce((a,m,i)=>m.actual>0?i:a,-1);
+  const tb=document.getElementById('achieveTable');tb.innerHTML='';
+  bdMonthly.forEach((m,i)=>{
+    if(!m.actual&&i>lastActualIdx)return;
+    if(!m.actual&&!m.target)return;
+    const isCurrent=i===lastActualIdx&&bdMonthly[i+1]&&!bdMonthly[i+1].actual;
+    const done=m.actual>0;
+    const cls=done?(m.rate>=1?'bg':m.rate>=0.85?'by':'br'):(isCurrent?'bo':'bb');
+    const txt=isCurrent?'⏳ 進行中':done?(m.rate>=1?'✅ 達標':m.rate>=0.85?'⚠ 近達標':'❌ 未達標'):'—';
+    const w=Math.min((m.rate||0)*100,100).toFixed(0);
+    const fc2=m.rate>=1?'#34d399':m.rate>=0.85?'#fbbf24':done?'#f87171':'#fb923c';
+    tb.innerHTML+=`<tr>
+      <td><strong>${months[i]}${isCurrent?'▶':''}</strong></td>
+      <td>${fc(m.target)}</td>
+      <td>${done?fc(m.actual):'–'}</td>
+      <td><span class="bgt ${cls}">${done?(m.rate*100).toFixed(1)+'%':'–'}</span></td>
+      <td>${txt}</td>
+      <td style="min-width:130px">
+        <div class="pb"><div class="pf" style="background:${fc2};width:${w}%"></div></div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">${done?(m.rate*100).toFixed(0)+'% of target':'待更新'}</div>
+      </td>
+    </tr>`;
+  });
+}
+
+// ===================== CHANNEL CHARTS =====================
+let selM='all',pieC,rankC,rateC,qRateC;
+
+function chActual(ch,month){
+  if(month==='all')return ch.m.reduce((a,b)=>a+b,0);
+  return ch.m[month]||0;
+}
+
+function setM(m,btn){
+  selM=m;
+  document.querySelectorAll('.fb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  updateChannelCharts();
+}
+
+function updateChannelCharts(){
+  const active=channels.filter(c=>chActual(c,selM)>0).sort((a,b)=>chActual(b,selM)-chActual(a,selM));
+  const labels=active.map(c=>c.name);
+  const vals=active.map(c=>chActual(c,selM));
+  const total=vals.reduce((a,b)=>a+b,0);
+
+  if(pieC)pieC.destroy();
+  pieC=new Chart(document.getElementById('pieChart'),{
+    type:'doughnut',
+    data:{labels,datasets:[{data:vals,backgroundColor:pal,borderWidth:2,borderColor:'#1a1d27'}]},
+    options:{responsive:true,maintainAspectRatio:true,cutout:'62%',
+      plugins:{legend:{position:'right',labels:{boxWidth:11,padding:9,color:'#94a3b8'}},
+        tooltip:{...tip,callbacks:{label:ctx=>` ${ctx.label}: ${fc(ctx.raw)} (${(ctx.raw/total*100).toFixed(1)}%)`}}}
+    }
+  });
+
+  if(rankC)rankC.destroy();
+  rankC=new Chart(document.getElementById('rankChart'),{
+    type:'bar',
+    data:{labels,datasets:[{data:vals,backgroundColor:pal,borderRadius:4,borderSkipped:false}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{display:false},tooltip:{...tip,callbacks:{label:ctx=>` ${fc(ctx.raw)}`}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}},y:{grid:{display:false},ticks:{color:'#e2e8f0'}}}
+    }
+  });
+
+  const rateActive=channels.filter(c=>c.annT>0&&chActual(c,selM)>0);
+  const rLab=rateActive.map(c=>c.name);
+  const rVals=rateActive.map(c=>{
+    const actual=chActual(c,selM);
+    const denom=selM==='all'?c.annT*(5/12):c.annT/12;
+    return denom>0?(actual/denom)*100:0;
+  });
+
+  if(rateC)rateC.destroy();
+  rateC=new Chart(document.getElementById('rateChart'),{
+    type:'bar',
+    data:{labels:rLab,datasets:[
+      {label:'達成率 (%)',data:rVals,backgroundColor:rVals.map(r=>r>=100?'rgba(52,211,153,.8)':r>=70?'rgba(251,191,36,.8)':'rgba(248,113,113,.8)'),borderRadius:4},
+      {label:'目標 100%',data:rLab.map(()=>100),type:'line',borderColor:'#4f8ef7',borderWidth:2,borderDash:[5,3],pointRadius:0,fill:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{labels:{color:'#94a3b8'}},tooltip:{...tip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>v+'%'}}}
+    }
+  });
+
+  // ---- 季度達成率圖 ----
+  const qActive=channels.filter(c=>c.annT>0||c.m.some(v=>v>0));
+  const qLabels=qActive.map(c=>c.name);
+  const q1v=qActive.map(c=>chQRate(c,1)),q2v=qActive.map(c=>chQRate(c,2));
+  const hasQ2=q2v.some(v=>v!=null);
+  const qDS=[
+    {label:'Q1（1~3月）',data:q1v,backgroundColor:'rgba(79,142,247,.75)',borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4}
+  ];
+  if(hasQ2)qDS.push({label:'Q2（4~6月）',data:q2v,backgroundColor:'rgba(251,191,36,.75)',borderColor:'#fbbf24',borderWidth:1.5,borderRadius:4});
+  qDS.push({label:'目標 100%',data:qLabels.map(()=>100),type:'line',borderColor:'#34d399',borderWidth:2,borderDash:[5,3],pointRadius:0,fill:false,order:-1});
+  if(qRateC)qRateC.destroy();
+  qRateC=new Chart(document.getElementById('qRateChart'),{
+    type:'bar',
+    data:{labels:qLabels,datasets:qDS},
+    options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,padding:14}},
+        tooltip:{...tip,callbacks:{label:ctx=>ctx.raw!=null?` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`:''}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},
+        y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>v+'%'},min:0,suggestedMax:200}}
+    }
+  });
+
+  // ---- Channel table ----
+  const chTb=document.getElementById('chTable');chTb.innerHTML='';
+  const allS=[...channels].sort((a,b)=>chActual(b,'all')-chActual(a,'all'));
+  const totAll=allS.reduce((s,c)=>s+chActual(c,'all'),0);
+  const completedM=bdMonthly.filter(m=>m.actual>0).length||5;
+  allS.forEach(c=>{
+    const act=chActual(c,'all');
+    if(!act&&!c.annT)return;
+    const rMo=c.annT>0?act/(c.annT*completedM/12)*100:null;
+    const cls=rMo==null?'bb':rMo>=100?'bg':rMo>=70?'by':'br';
+    const share=totAll>0?(act/totAll*100).toFixed(1)+'%':'–';
+    const q1r=chQRate(c,1),q2r=chQRate(c,2);
+    const qBadge=r=>{if(r==null)return'–';const qcls=r>=100?'bg':r>=70?'by':'br';return`<span class="bgt ${qcls}">${r.toFixed(0)}%</span>`;};
+    chTb.innerHTML+=`<tr>
+      <td><span style="font-size:10px;color:#94a3b8">${c.cat}</span></td>
+      <td><strong>${c.name}</strong></td>
+      <td>${c.annT>0?fc(c.annT):'–'}</td>
+      <td>${fc(act)}</td>
+      <td>${rMo!=null?`<span class="bgt ${cls}">${rMo.toFixed(0)}%</span>`:'<span class="bgt bb">–</span>'}</td>
+      <td>${share}</td>
+      <td>${qBadge(q1r)}</td>
+      <td>${qBadge(q2r)}</td>
+    </tr>`;
+  });
+}
+// ===================== YOY CHART =====================
+let _yoyC,_chYoyC;
+function renderYOYCharts(){
+if(_yoyC)_yoyC.destroy();
+_yoyC=new Chart(document.getElementById('yoyChart'),{
+  type:'bar',
+  data:{
+    labels:months,
+    datasets:[
+      {label:'2025 實際',data:yoy2025,backgroundColor:'rgba(148,163,184,.3)',borderColor:'#94a3b8',borderWidth:1.5,borderRadius:4,order:3},
+      {label:'2026 實際',data:yoy2026.map(v=>v||null),
+       backgroundColor:(ctx)=>{const v=yoy2026[ctx.dataIndex];const p=yoy2025[ctx.dataIndex];if(!v)return'rgba(79,142,247,.5)';return v>=p?'rgba(52,211,153,.85)':'rgba(248,113,113,.85)';},
+       borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4,order:2},
+      {label:'2026 目標',data:bdMonthly.map(m=>m.target),type:'line',borderColor:'#fbbf24',borderWidth:2,borderDash:[5,4],pointRadius:3,pointBackgroundColor:'#fbbf24',fill:false,order:1}
+    ]
+  },
+  options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+    plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,padding:14}},
+      tooltip:{...tip,callbacks:{label:ctx=>{
+        if(!ctx.raw)return'';
+        if(ctx.datasetIndex===1&&yoy2025[ctx.dataIndex]>0){
+          const yoy=((ctx.raw/yoy2025[ctx.dataIndex]-1)*100).toFixed(1);
+          return` ${ctx.dataset.label}: ${fc(ctx.raw)} (YOY: ${yoy>0?'+':''}${yoy}%)`;
+        }
+        return` ${ctx.dataset.label}: ${fc(ctx.raw)}`;
+      }}}
+    },
+    scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}}}
+  }
+});
+if(_chYoyC)_chYoyC.destroy();
+_chYoyC=new Chart(document.getElementById('chYoyChart'),{
+  type:'bar',
+  data:{
+    labels:ch2025q.map(c=>c.name),
+    datasets:[
+      {label:'2025（1~4月）',data:ch2025q.map(c=>c.v2025),backgroundColor:'rgba(148,163,184,.4)',borderColor:'#94a3b8',borderWidth:1.5,borderRadius:4},
+      {label:'2026（1~4月）',data:ch2025q.map(c=>c.v2026),backgroundColor:'rgba(79,142,247,.75)',borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4}
+    ]
+  },
+  options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+    plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,padding:14}},tooltip:{...tip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fc(ctx.raw)}`}}},
+    scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}}}
+  }
+});
+}
+
+// ===================== QUARTER CHARTS =====================
+let _qBarC,_annDonutC,_fyC;
+function renderQuarterCharts(){
+  const qAct=[0,0,0,0],qTgt=[0,0,0,0];
+  bdMonthly.forEach((m,i)=>{const q=Math.floor(i/3);qAct[q]+=(m.actual||0);qTgt[q]+=(m.target||0);});
+  const _annActual=qAct.reduce((s,v)=>s+v,0);
+  const _annTotal=qTgt.reduce((s,v)=>s+v,0)||65021005;
+  if(_qBarC)_qBarC.destroy();
+  _qBarC=new Chart(document.getElementById('qBarChart'),{
+    type:'bar',
+    data:{
+      labels:['Q1','Q2','Q3','Q4'],
+      datasets:[
+        {label:'目標',data:qTgt,backgroundColor:'rgba(79,142,247,.25)',borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4},
+        {label:'實際',data:qAct.map(v=>v||null),backgroundColor:['rgba(52,211,153,.8)','rgba(251,191,36,.7)','rgba(79,142,247,.5)','rgba(79,142,247,.5)'],borderColor:['#34d399','#fbbf24','#4f8ef7','#4f8ef7'],borderWidth:1.5,borderRadius:4}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,padding:12}},
+        tooltip:{...tip,callbacks:{label:ctx=>ctx.raw!=null?` ${ctx.dataset.label}: ${fc(ctx.raw)}`:` ${ctx.dataset.label}: 待更新`}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}}}
+    }
+  });
+  if(_annDonutC)_annDonutC.destroy();
+  _annDonutC=new Chart(document.getElementById('annDonut'),{
+    type:'doughnut',
+    data:{labels:['已完成','剩餘目標'],datasets:[{data:[_annActual,Math.max(_annTotal-_annActual,0)],backgroundColor:['#34d399','rgba(45,50,80,.6)'],borderWidth:0,cutout:'70%'}]},
+    plugins:[{id:'ct',beforeDraw(ch){
+      const{ctx,chartArea:{width,height,top,left}}=ch;
+      ctx.save();
+      const cx=left+width/2,cy=top+height/2;
+      ctx.fillStyle='#e2e8f0';ctx.font='bold 20px Segoe UI';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText((_annTotal>0?(_annActual/_annTotal*100).toFixed(1):0)+'%',cx,cy-8);
+      ctx.fillStyle='#94a3b8';ctx.font='11px Segoe UI';ctx.fillText('年度完成',cx,cy+12);
+      ctx.restore();
+    }}],
+    options:{responsive:true,maintainAspectRatio:true,
+      plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',boxWidth:11,padding:14}},
+        tooltip:{...tip,callbacks:{label:ctx=>` ${ctx.label}: ${fc(ctx.raw)}`}}}
+    }
+  });
+  if(_fyC)_fyC.destroy();
+  _fyC=new Chart(document.getElementById('fyChart'),{
+    type:'bar',
+    data:{
+      labels:months,
+      datasets:[
+        {label:'月度目標',data:bdMonthly.map(m=>m.target),backgroundColor:'rgba(79,142,247,.2)',borderColor:'#4f8ef7',borderWidth:1.5,borderRadius:4,order:2},
+        {label:'實際銷售',data:bdMonthly.map((m,i)=>m.actual||null),
+         backgroundColor:bdMonthly.map((m,i)=>i===4?'rgba(251,191,36,.75)':rateColor(m.rate)),
+         borderColor:bdMonthly.map((m,i)=>i===4?'#fbbf24':rateBorder(m.rate)),
+         borderWidth:1.5,borderRadius:4,order:1}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:true,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,padding:14}},
+        tooltip:{...tip,callbacks:{label:ctx=>ctx.raw?` ${ctx.dataset.label}: ${fc(ctx.raw)}`:null}}},
+      scales:{x:{grid:{color:grid},ticks:{color:'#94a3b8'}},y:{grid:{color:grid},ticks:{color:'#94a3b8',callback:v=>'$'+fmt(v)}}}
+    }
+  });
+}
+
+// ===================== MASTER RENDER =====================
+function renderAllCharts(){
+  renderMonthlyChart();
+  renderAchieveTable();
+  updateChannelCharts();
+  renderYOYCharts();
+  renderQuarterCharts();
+}
+
+// ===================== DATA SYNC =====================
+async function doSyncData(){
+  const msgEl=document.getElementById('syncMsg');
+  await syncFromGSheets(msgEl);
+}
+
+// ===================== ASYNC INIT =====================
+(async function(){
+  await loadDataFromSupabase();
+  renderAllCharts();
+})();
+
+// ===================== TAB SWITCH =====================
+function switchTab(id,btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
