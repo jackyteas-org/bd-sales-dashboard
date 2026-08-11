@@ -292,6 +292,27 @@ tr:hover td{background:var(--bg3);}
   </div>
 </div>
 
+<!-- ===== ADMIN RESET PASSWORD MODAL ===== -->
+<div id="resetPwModal" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9500;display:none;align-items:center;justify-content:center;">
+  <div class="profile-box">
+    <h3>🔑 重設密碼</h3>
+    <p class="sub">正在為 <strong id="resetPwTargetName"></strong> 設定新密碼，對方下次登入請使用這組新密碼</p>
+    <div id="resetPwMsg"></div>
+    <div class="form-group">
+      <label>新密碼</label>
+      <input type="password" id="resetPwNew" placeholder="至少 6 個字元">
+    </div>
+    <div class="form-group">
+      <label>確認新密碼</label>
+      <input type="password" id="resetPwNew2" placeholder="再次輸入新密碼">
+    </div>
+    <div class="profile-actions">
+      <button class="auth-btn primary" style="flex:1" onclick="doAdminResetPassword()">儲存新密碼</button>
+      <button class="action-btn btn-close" onclick="closeResetPwModal()" style="padding:8px 20px">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MAIN DASHBOARD ===== -->
 <div id="mainApp" style="display:none">
 
@@ -631,6 +652,7 @@ async function renderAdminPanel() {
       <div class="uname">${u.name||u.username} <span style="color:#94a3b8;font-size:11px;font-weight:400">${u.username}</span></div>
       <span class="urole">${u.role==='admin'?'管理員':'檢視者'}</span>
       <span class="ustatus ${u.status}">${u.status==='approved'?'啟用中':'已停用'}</span>
+      <button class="action-btn btn-enable" onclick="openResetPwModal('${u.username}','${(u.name||u.username).replace(/'/g,"\\'")}')">重設密碼</button>
       ${u.username!=='jacky.yang@teascovery.com'?`
         ${u.status==='approved'
           ?`<button class="action-btn btn-disable" onclick="adminAction('disable','${u.username}')">停用</button>`
@@ -651,6 +673,44 @@ async function adminAction(action, username) {
     }
     renderAdminPanel();
   } catch(e) { alert('操作失敗：'+e.message); }
+}
+
+// ---- Admin: Reset Another User's Password ----
+let _resetPwTarget=null;
+function openResetPwModal(username, name) {
+  const sess = getSession();
+  if (!sess || sess.role!=='admin') return;
+  _resetPwTarget = username;
+  document.getElementById('resetPwTargetName').textContent = `${name}（${username}）`;
+  document.getElementById('resetPwNew').value = '';
+  document.getElementById('resetPwNew2').value = '';
+  const msg = document.getElementById('resetPwMsg');
+  msg.className = ''; msg.textContent = '';
+  document.getElementById('resetPwModal').style.display = 'flex';
+}
+function closeResetPwModal() {
+  document.getElementById('resetPwModal').style.display = 'none';
+  _resetPwTarget = null;
+}
+async function doAdminResetPassword() {
+  const sess = getSession();
+  if (!sess || sess.role!=='admin' || !_resetPwTarget) return;
+  const newPass = document.getElementById('resetPwNew').value;
+  const newPass2 = document.getElementById('resetPwNew2').value;
+  const msg = document.getElementById('resetPwMsg');
+  const show = (text, type='error') => { msg.className='auth-msg '+type; msg.textContent=text; };
+  if (newPass.length < 6) { show('新密碼至少 6 個字元'); return; }
+  if (newPass !== newPass2) { show('兩次新密碼不一致'); return; }
+  show('儲存中...', 'info');
+  try {
+    const hash = await hashPass(newPass);
+    const { error } = await sb.from('bd_users').update({password_hash:hash}).eq('username', _resetPwTarget);
+    if (error) throw error;
+    show('✅ 密碼已重設，請告知對方新密碼', 'success');
+    setTimeout(closeResetPwModal, 1500);
+  } catch(e) {
+    show('重設失敗：' + e.message);
+  }
 }
 
 // ---- Profile Settings ----
