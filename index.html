@@ -211,7 +211,7 @@ tr:hover td{background:var(--bg3);}
     <!-- Login Panel -->
     <div id="loginPanel" class="auth-panel active">
       <div id="loginMsg" class="auth-msg"></div>
-      <div class="form-group"><label>帳號</label><input id="loginUser" type="text" placeholder="輸入帳號" autocomplete="username"></div>
+      <div class="form-group"><label>Email</label><input id="loginUser" type="email" placeholder="you@example.com" autocomplete="username"></div>
       <div class="form-group"><label>密碼</label><input id="loginPass" type="password" placeholder="輸入密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <button class="auth-btn primary" onclick="doLogin()">登入後台</button>
     </div>
@@ -220,7 +220,7 @@ tr:hover td{background:var(--bg3);}
     <div id="registerPanel" class="auth-panel">
       <div id="registerMsg" class="auth-msg"></div>
       <div class="form-group"><label>顯示名稱</label><input id="regName" type="text" placeholder="你的姓名（如：小明）"></div>
-      <div class="form-group"><label>帳號</label><input id="regUser" type="text" placeholder="設定登入帳號（英文數字）"></div>
+      <div class="form-group"><label>Email</label><input id="regUser" type="email" placeholder="you@example.com"></div>
       <div class="form-group"><label>密碼</label><input id="regPass" type="password" placeholder="設定密碼（至少 6 碼）"></div>
       <div class="form-group"><label>確認密碼</label><input id="regPass2" type="password" placeholder="再次輸入密碼"></div>
       <button class="auth-btn primary" onclick="doRegister()">送出申請</button>
@@ -521,12 +521,12 @@ function showMsg(id, msg, type='error') {
 async function doLogin() {
   const username = document.getElementById('loginUser').value.trim().toLowerCase();
   const password = document.getElementById('loginPass').value;
-  if (!username||!password) { showMsg('loginMsg','請輸入帳號和密碼'); return; }
+  if (!username||!password) { showMsg('loginMsg','請輸入 Email 和密碼'); return; }
   showMsg('loginMsg','驗證中...','info');
   try {
     const hash = await hashPass(password);
     const { data, error } = await sb.from('bd_users').select('*').eq('username', username).single();
-    if (error || !data) { showMsg('loginMsg','帳號不存在'); return; }
+    if (error || !data) { showMsg('loginMsg','此 Email 尚未註冊'); return; }
     if (data.password_hash !== hash) { showMsg('loginMsg','密碼錯誤'); return; }
     if (data.status==='pending') { showMsg('loginMsg','帳號審核中，請等管理員核准 ⏳','info'); return; }
     if (data.status==='disabled') { showMsg('loginMsg','帳號已停用，請聯繫管理員'); return; }
@@ -544,7 +544,7 @@ async function doRegister() {
   const pass = document.getElementById('regPass').value;
   const pass2 = document.getElementById('regPass2').value;
   if (!name||!username||!pass) { showMsg('registerMsg','請填寫所有欄位'); return; }
-  if (!/^[a-z0-9_]{3,20}$/.test(username)) { showMsg('registerMsg','帳號僅限英文小寫、數字、底線，3~20 字'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) { showMsg('registerMsg','請輸入有效的 Email 格式'); return; }
   if (pass.length<6) { showMsg('registerMsg','密碼至少 6 個字元'); return; }
   if (pass!==pass2) { showMsg('registerMsg','兩次密碼不一致'); return; }
   showMsg('registerMsg','送出中...','info');
@@ -552,7 +552,7 @@ async function doRegister() {
     const hash = await hashPass(pass);
     const { error } = await sb.from('bd_users').insert({username, name, password_hash:hash, role:'viewer', status:'pending'});
     if (error) {
-      if (error.code==='23505') { showMsg('registerMsg','帳號已被使用，請換一個'); return; }
+      if (error.code==='23505') { showMsg('registerMsg','這個 Email 已經註冊過了'); return; }
       throw error;
     }
     showMsg('registerMsg','申請已送出！等待管理員審核後即可登入 ✅','success');
@@ -618,7 +618,7 @@ async function renderAdminPanel() {
   pList.innerHTML=pending.length===0?'<div class="empty-msg">目前沒有待審核的申請</div>':
     pending.map(u=>`<div class="user-row">
       <div class="user-avatar" style="width:28px;height:28px;font-size:11px">${u.name.charAt(0).toUpperCase()}</div>
-      <div class="uname">${u.name} <span style="color:#94a3b8;font-size:11px;font-weight:400">@${u.username}</span></div>
+      <div class="uname">${u.name} <span style="color:#94a3b8;font-size:11px;font-weight:400">${u.username}</span></div>
       <span class="ustatus pending">待審核</span>
       <button class="action-btn btn-approve" onclick="adminAction('approve','${u.username}')">✓ 核准</button>
       <button class="action-btn btn-delete" onclick="adminAction('delete','${u.username}')">✕ 拒絕</button>
@@ -628,10 +628,10 @@ async function renderAdminPanel() {
   aList.innerHTML=others.length===0?'<div class="empty-msg">尚無已核准用戶</div>':
     others.map(u=>`<div class="user-row">
       <div class="user-avatar" style="width:28px;height:28px;font-size:11px">${(u.name||u.username).charAt(0).toUpperCase()}</div>
-      <div class="uname">${u.name||u.username} <span style="color:#94a3b8;font-size:11px;font-weight:400">@${u.username}</span></div>
+      <div class="uname">${u.name||u.username} <span style="color:#94a3b8;font-size:11px;font-weight:400">${u.username}</span></div>
       <span class="urole">${u.role==='admin'?'管理員':'檢視者'}</span>
       <span class="ustatus ${u.status}">${u.status==='approved'?'啟用中':'已停用'}</span>
-      ${u.username!=='jacky'?`
+      ${u.username!=='jacky.yang@teascovery.com'?`
         ${u.status==='approved'
           ?`<button class="action-btn btn-disable" onclick="adminAction('disable','${u.username}')">停用</button>`
           :`<button class="action-btn btn-enable" onclick="adminAction('enable','${u.username}')">啟用</button>`}
